@@ -1,0 +1,29 @@
+version: '3.5'
+
+services:
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch-oss:$ELASTIC_VERSION
+    volumes:
+      - esdata:/usr/share/elasticsearch/data:rw
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    environment:
+      cluster.name: "docker-cluster"
+      network.host: 0.0.0.0
+      discovery.zen.minimum_master_nodes: 1
+      discovery.type: single-node
+      ES_JAVA_OPTS: "-Xmx512m -Xms512m"
+    networks:
+      - elk-ciomss
+
+volumes:
+  esdata:
+    driver: local
+
+networks:
+  elk-ciomss:
+    driver: bridge
+    name: elk-ciomss
+    external: false

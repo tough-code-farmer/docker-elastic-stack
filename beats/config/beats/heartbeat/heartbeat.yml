@@ -1,0 +1,26 @@
+heartbeat.monitors:
+
+
+#Monitor all containers using an icmp ping
+- type: icmp
+  schedule: '*/5 * * * * * *'
+  hosts: ["metricbeat","packetbeat"]
+  ipv4: true
+  ipv6: true
+  mode: any
+  timeout: 3s
+  wait: 1s
+
+
+processors:
+- add_docker_metadata: ~
+
+
+monitoring.enabled: true
+
+
+output.elasticsearch:
+  hosts: ["192.168.99.15:9200"]
+
+
+logging.to_files: false

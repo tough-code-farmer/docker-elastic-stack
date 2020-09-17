@@ -1,0 +1,182 @@
+version: '3.5'
+
+services:
+
+  elasticsearch:
+    container_name: elasticsearch
+    hostname: elasticsearch
+    image: docker.elastic.co/elasticsearch/elasticsearch-oss:$ELASTIC_VERSION
+    volumes:
+      # - ./config/elasticsearch/elasticsearch.yml:/usr/share/elasticsearch/elasticsearch.yml
+      - esdata:/usr/share/elasticsearch/data:rw
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    environment:
+      cluster.name: "ciomss-cluster"
+      network.host: 0.0.0.0
+      discovery.zen.minimum_master_nodes: 1
+      discovery.type: single-node
+      ES_JAVA_OPTS: "-Xmx512m -Xms512m"
+    mem_limit: ${ES_MEM_LIMIT}
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    networks:
+      - elk-ciomss
+
+  logstash:
+    container_name: logstash
+    hostname: logstash
+    image:  docker.elastic.co/logstash/logstash-oss:$ELASTIC_VERSION
+    volumes:
+      - ./logstash/config/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
+      - ./logstash/pipeline:/usr/share/logstash/pipeline:ro
+    ports:
+      - "5000:5000"
+    environment:
+      LS_JAVA_OPTS: "-Xmx512m -Xms512m"
+    networks:
+      - elk-ciomss
+    depends_on:
+      - elasticsearch
+
+  kibana:
+    container_name: kibana
+    hostname: kibana
+    image: docker.elastic.co/kibana/kibana-oss:$ELASTIC_VERSION
+    volumes:
+      - ./config/kibana/kibana.yml:/usr/share/kibana/kibana.yml
+    environment:
+      server.name: kibana
+      server.host: 0
+      elasticsearch.hosts: "http://elasticsearch:9200"
+    ports:
+      - "5601:5601"
+    networks:
+      - elk-ciomss
+    depends_on:
+      - elasticsearch
+
+  #Metricbeat container
+  metricbeat:
+    container_name: metricbeat-${HOST_NAME}
+    hostname: metricbeat-${HOST_NAME}
+    user: root #To read the docker socket
+    image: docker.elastic.co/beats/metricbeat-oss:${ELASTIC_VERSION}
+    command: metricbeat -e -system.hostfs=/hostfs -strict.perms=false
+    volumes:
+      #Mount the metricbeat configuration so users can make edits.
+      - ./config/beats/metricbeat/metricbeat.yml:/usr/share/metricbeat/metricbeat.yml
+      #Mount the modules.d directory into the container. This allows user to potentially make changes to the modules and they will be dynamically loaded.
+      - ./config/beats/metricbeat/modules.d/:/usr/share/metricbeat/modules.d/
+      #The commented sections below enable Metricbeat to monitor the Docker host rather than the Metricbeat container. These are used by the system module.
+      - /proc:/hostfs/proc:ro
+      - /sys/fs/cgroup:/hostfs/sys/fs/cgroup:ro
+      #Allows us to report on docker from the hosts information.
+      - /var/run/docker.sock:/var/run/docker.sock
+      #We mount the host filesystem so we can report on disk usage with the system module.
+      - /:/hostfs:ro
+    restart: on-failure
+    networks:
+      - elk-ciomss
+    depends_on:
+      - elasticsearch
+
+  #Auditbeat container
+  auditbeat:
+    container_name: auditbeat-${HOST_NAME}
+    hostname: auditbeat-${HOST_NAME}
+    user: root #To read the docker socket
+    image: "docker.elastic.co/beats/auditbeat-oss:${ELASTIC_VERSION}"
+    command: auditbeat -e -strict.perms=false
+    volumes:
+      #Mount the Auditbeat configuration so users can make edits.
+      - ./config/beats/auditbeat/auditbeat.yml:/usr/share/auditbeat/auditbeat.yml
+      #Allows us to report on docker from the hosts information.
+      - /var/run/docker.sock:/var/run/docker.sock
+    pid: "host" # Set the required permissions with pid and cap_add for Auditbeat
+    cap_add: ['AUDIT_CONTROL', 'AUDIT_READ']
+    restart: on-failure
+    networks:
+      - elk-ciomss
+    depends_on:
+      - elasticsearch
+
+  #Heartbeat container
+  heartbeat:
+    container_name: heartbeat-${HOST_NAME}
+    hostname: heartbeat-${HOST_NAME}
+    user: root #To read the docker socket
+    image: "docker.elastic.co/beats/heartbeat-oss:${ELASTIC_VERSION}"
+    command: heartbeat -e -strict.perms=false
+    volumes:
+      #Mount the Heartbeat configuration so users can make edits.
+      - ./config/beats/heartbeat/heartbeat.yml:/usr/share/heartbeat/heartbeat.yml
+      #Allows us to report on docker from the hosts information.
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: on-failure
+    networks:
+      - elk-ciomss
+    depends_on:
+      - elasticsearch
+
+  #Filebeat container
+  filebeat:
+    container_name: filebeat
+    hostname: filebeat
+    user: root #To read the docker socket
+    image: "docker.elastic.co/beats/filebeat-oss:${ELASTIC_VERSION}"
+    command: filebeat -e -strict.perms=false
+    volumes:
+      #Mount the Filebeat configuration so users can make edits.
+      - ./config/beats/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml
+      #Mount the prospectors directory. Users can in turn add propspectors to this directory and they will be dynamically loaded.
+      - ./config/beats/filebeat/prospectors.d/:/usr/share/filebeat/prospectors.d/
+      #Mount the hosts system log directory. This represents the logs of the VM hosting docker. Consumed by the Filebeat system module.
+      - /private/var/log/:/var/log/host/:ro
+      #Mount the Docker logs for indexing by the custom prospector ./config/filebeat/prospectors.d.
+      - /var/lib/docker/containers:/hostfs/var/lib/docker/containers
+      #Named volume fsdata. This is used to persist the registry file between restarts, so to avoid data duplication.
+      - filebeatdata:/usr/share/filebeat/data/
+      #Allows us to report on docker from the hosts information.
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: on-failure
+    networks:
+      - elk-ciomss
+    depends_on:
+      - elasticsearch
+
+  #Packetbeat container
+  packetbeat:
+    container_name: packetbeat
+    hostname: packetbeat
+    user: root #To read the docker socket
+    image: "docker.elastic.co/beats/packetbeat-oss:${ELASTIC_VERSION}"
+    command: packetbeat -e -strict.perms=false
+    volumes:
+      #Mount the packetbeat configuration so users can make edits.
+      - ./config/beats/packetbeat/packetbeat.yml:/usr/share/packetbeat/packetbeat.yml
+      #Allows us to report on docker from the hosts information.
+      - /var/run/docker.sock:/var/run/docker.sock
+    # Packetbeat needs some elevated privileges to capture network traffic. We'll grant them with POSIX capabilities.
+    cap_add: ['NET_RAW', 'NET_ADMIN']
+    # Use "host mode" networking to allow Packetbeat to capture traffic from the real network interface on the host,
+    # rather than being isolated to the container's virtual interface.
+    network_mode: host
+    restart: on-failure
+    depends_on:
+      - elasticsearch
+
+volumes:
+  esdata:
+    driver: local
+  filebeatdata:
+    driver: local
+
+networks:
+  elk-ciomss:
+    driver: bridge
+    name: elk-ciomss
+    external: false

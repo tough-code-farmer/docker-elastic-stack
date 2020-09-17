@@ -1,0 +1,22 @@
+version: '3.5'
+
+services:
+
+  #Metricbeat container
+  metricbeat:
+    container_name: metricbeat
+    hostname: metricbeat
+    image: docker.elastic.co/beats/metricbeat-oss:${ELASTIC_VERSION}
+    command: setup -E setup.kibana.host=kibana:5601 -E output.elasticsearch.hosts=["elasticsearch:9200"]
+    networks:
+      - elk-ciomss
+
+volumes:
+  esdata:
+    driver: local
+
+networks:
+  elk-ciomss:
+    driver: bridge
+    name: elk-ciomss
+    external: false

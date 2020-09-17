@@ -1,0 +1,64 @@
+version: '3.5'
+
+services:
+
+  elasticsearch:
+    container_name: elasticsearch
+    hostname: elasticsearch
+    image: docker.elastic.co/elasticsearch/elasticsearch-oss:$ELASTIC_VERSION
+    volumes:
+      - esdata:/usr/share/elasticsearch/data:rw
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    environment:
+      cluster.name: "ciomss-cluster"
+      network.host: 0.0.0.0
+      discovery.zen.minimum_master_nodes: 1
+      discovery.type: single-node
+      ES_JAVA_OPTS: "-Xmx512m -Xms512m"
+    networks:
+      - elk-ciomss
+
+  logstash:
+    container_name: logstash
+    hostname: logstash
+    image:  docker.elastic.co/logstash/logstash-oss:$ELASTIC_VERSION
+    volumes:
+      - ./logstash/config/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
+      - ./logstash/pipeline:/usr/share/logstash/pipeline:ro
+    ports:
+      - "5000:5000"
+    environment:
+      LS_JAVA_OPTS: "-Xmx512m -Xms512m"
+    networks:
+      - elk-ciomss
+    depends_on:
+      - elasticsearch
+
+  kibana:
+    container_name: kibana
+    hostname: kibana
+    image: docker.elastic.co/kibana/kibana-oss:$ELASTIC_VERSION
+    volumes:
+      - ./config/kibana/kibana.yml:/usr/share/kibana/kibana.yml
+    environment:
+      server.name: kibana
+      server.host: 0
+      elasticsearch.hosts: "http://elasticsearch:9200"
+    ports:
+      - "5601:5601"
+    networks:
+      - elk-ciomss
+    depends_on:
+      - elasticsearch
+
+volumes:
+  esdata:
+    driver: local
+
+networks:
+  elk-ciomss:
+    driver: bridge
+    name: elk-ciomss
+    external: false
