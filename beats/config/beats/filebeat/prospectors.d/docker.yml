@@ -6,6 +6,8 @@
   json.overwrite_keys: true
   close_inactive: 24h
   close_renamed: true
+  close_older: 1m
+  force_close_files: true
   pipeline: docker-logs
   processors:
   - add_docker_metadata: ~
